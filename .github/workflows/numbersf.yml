@@ -1222,7 +1222,7 @@ jobs:
           for f in ./common/scripts/setlocalversion ./"$KERNEL_REPOS"/scripts/setlocalversion ./external/dtc/scripts/setlocalversion; do
             [ -f "$f" ] || continue
             cp "$f" "$f.orig_bak" 2>/dev/null || true
-            printf '#!/bin/sh\necho -n "-android15-8-g93e223c276e7-abogki500782043-4k"\n' > "$f"
+            printf '#!/bin/sh\necho -n "6.6.118-android15-8-g93e223c276e7-abogki500782043-4k"\n' > "$f"
             chmod +x "$f"
             echo "version forced: $f"
           done
