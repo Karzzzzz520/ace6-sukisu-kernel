@@ -1,48 +1,35 @@
 name: Build Ace6 SukiSU+SusFS Kernel
 
 on:
-  workflow_dispatch:
-    inputs:
-      fast_build:
-        description: "Use fast build (skip LTO cache warmup)?"
-        required: true
-        default: true
-        type: boolean
-      enable_bbr:
-        description: "Enable BBRv1+v3 TCP congestion control?"
-        required: true
-        default: true
-        type: boolean
-      enable_bbg:
-        description: "Enable Baseband Guard (BBG)?"
-        required: true
-        default: true
-        type: boolean
+  workflow_dispatch: {}
 
 jobs:
   build:
-    name: Build Kernel
+    name: Build Ace6 Kernel
     runs-on: ubuntu-latest
+    timeout-minutes: 180
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Maximize Build Space
+      - name: Free Disk Space
         run: |
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android/sdk /opt/ghc /usr/local/.ghcup /usr/lib/jvm /usr/lib/mono /usr/lib/go /usr/lib/R
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/share/boost /usr/local/lib/android/sdk /usr/lib/jvm /opt/hostedtoolcache/CodeQL /usr/local/.ghcup
           sudo apt-get clean
           df -h
 
       - name: Install Dependencies
         run: |
           sudo apt-get update -y
-          sudo apt-get install -y build-essential bc bison flex cpio libncurses-dev libelf-dev libssl-dev lld llvm clang rsync python3 git curl unzip
+          sudo apt-get install -y git curl ca-certificates build-essential bc bison flex cpio libncurses-dev libelf-dev libssl-dev zlib1g-dev liblz4-tool libxml2-utils rsync unzip dwarves file python3 jq dos2unix kmod libdw-dev elfutils pigz
+          df -h
 
       - name: Install Repo Tool
         run: |
-          curl https://storage.googleapis.com/git-repo-downloads/repo > ~/repo
+          curl -s https://storage.googleapis.com/git-repo-downloads/repo > ~/repo
           chmod +x ~/repo
           sudo mv ~/repo /usr/local/bin/repo
+          repo --version
 
       - name: Init Repo and Sync
         run: |
@@ -50,69 +37,56 @@ jobs:
           cd kernel_workspace
           git config --global user.name "GitHub Action"
           git config --global user.email "action@github.com"
-          repo init -u https://github.com/OnePlusOSS/kernel_manifest -b oneplus/sm8750_b_16.0.0_ace_6 -m oneplus/sm8750_b_16.0.0_ace_6.xml --depth=1 --no-clone-bundle --no-tags
-          repo sync -c -j$(nproc) --no-tags
+          repo init -u https://github.com/OnePlusOSS/kernel_manifest -b oneplus/sm8750 -m oneplus_ace_6.xml --depth=1 --no-clone-bundle --no-tags
+          repo sync -c -j$(nproc) --no-clone-bundle --no-tags --force-sync
+          echo "=== synced tree ==="
+          ls -la
+          ls -la kernel_platform/ | head -30
 
       - name: Add SukiSU Ultra with SusFS
         run: |
           cd kernel_workspace/kernel_platform
-          # SukiSU official setup.sh with susfs-main branch
           curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s susfs-main
-          # Pull SusFS patches
-          git clone https://gitlab.com/simonpunk/susfs4ksu.git -b gki-android15-6.6 --depth=1 ../susfs4ksu || true
-          if [ -d ../susfs4ksu ]; then
-            cp -r ../susfs4ksu/kernel_patches/50_add_susfs_in_gki-android15-6.6-*.patch ./common/ || true
-            cp -r ../susfs4ksu/kernel_patches/fs/* ./common/fs/ || true
-            cp -r ../susfs4ksu/kernel_patches/include/linux/* ./common/include/linux/ || true
-            cd ./common
-            patch -p1 < 50_add_susfs_in_gki-android15-6.6-*.patch || true
-            cd ..
-          fi
-
-      - name: Apply BBR Patches
-        if: inputs.enable_bbr == true
-        run: |
-          cd kernel_workspace/kernel_platform/common
-          # BBRv3 patch from Google ACK
-          if [ -f ../KernelSU/kernel/bbr/bbrv3.patch ]; then
-            patch -p1 < ../KernelSU/kernel/bbr/bbrv3.patch || true
-          fi
+          echo "=== after setup ==="
+          ls -la KernelSU/ 2>/dev/null | head
 
       - name: Build Kernel
         run: |
           cd kernel_workspace/kernel_platform
-          LTO=thin build/build.sh --lto=thin
+          ls -la oplus/build/ 2>/dev/null | head
+          chmod +x oplus/build/oplus_build_kernel.sh 2>/dev/null || true
+          ./oplus/build/oplus_build_kernel.sh sun perf 2>&1 | tail -80
 
-      - name: Package AK3
+      - name: Locate Image
+        id: find_image
         run: |
           cd kernel_workspace/kernel_platform
-          mkdir -p ak3/anykernel3
-          # Find built kernel images
-          find . -name "Image" -o -name "Image.gz" -o -name "Image.gz-dtb" | head -5
-          cp $(find . -name "Image.gz-dtb" | head -1) ak3/anykernel3/Image.gz-dtb 2>/dev/null || true
-          cp $(find . -name "Image" | head -1) ak3/anykernel3/Image 2>/dev/null || true
-          # Download AnyKernel3 template
-          curl -sL https://raw.githubusercontent.com/osm0vi/AnyKernel3/master/anykernel3.sh -o ak3/anykernel3/anykernel3.sh || true
-          # Write AK3 config
-          cat > ak3/anykernel3/anykernel3.cfg << 'CFGEOF'
-          do.device=1
-          do.modules=0
-          do.fsck=0
-          do.unzip=0
-          do.cleanup=1
-          block=auto
-          # Ace 6 uses init_boot for GKI KSU patch
-          block_desc=init_boot
-          CFGEOF
-          # Zip it
-          cd ak3/anykernel3
-          zip -r9 ../../ace6-sukisu-susfs-kernel.zip .
-          cd ../..
-          ls -la ace6-sukisu-susfs-kernel.zip
+          echo "=== searching for Image ==="
+          find . -name "Image" -type f 2>/dev/null | head -20
+          IMG=$(find . -name "Image" -type f 2>/dev/null | grep -v "\.o$" | head -1)
+          echo "Selected: $IMG"
+          echo "image_path=$IMG" >> $GITHUB_OUTPUT
+          if [ -n "$IMG" ]; then ls -la "$IMG"; file "$IMG"; fi
+
+      - name: Package AnyKernel3
+        if: steps.find_image.outputs.image_path != ''
+        run: |
+          cd kernel_workspace
+          git clone --depth=1 https://github.com/osm0sis/AnyKernel3.git ak3
+          cp "${{ steps.find_image.outputs.image_path }}" ak3/Image
+          cd ak3
+          sed -i 's|^block=.*|block=/dev/block/bootdevice/by-name/boot;|' anykernel.sh
+          sed -i 's/^do.devicecheck=.*/do.devicecheck=0/' anykernel.sh
+          sed -i 's/^do.modules=.*/do.modules=0/' anykernel.sh
+          echo "=== anykernel.sh head ==="
+          head -30 anykernel.sh
+          zip -r9 ../ace6-sukisu-susfs.zip . -x '*.git*'
+          ls -la ../ace6-sukisu-susfs.zip
 
       - name: Upload Artifact
+        if: steps.find_image.outputs.image_path != ''
         uses: actions/upload-artifact@v4
         with:
           name: ace6-sukisu-susfs-kernel
-          path: kernel_workspace/kernel_platform/ace6-sukisu-susfs-kernel.zip
+          path: kernel_workspace/ace6-sukisu-susfs.zip
           retention-days: 30
