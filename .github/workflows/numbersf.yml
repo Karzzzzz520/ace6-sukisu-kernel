@@ -1206,6 +1206,16 @@ jobs:
           echo "Disabling GPUEB for MTK kernel 5.10"
           sed -i '/obj-y.*gpueb/d' kernel_workspace/kernel-5.10/drivers/gpu/mediatek/Makefile
 
+      - name: Fix missing KSU hook (SUSFS compat)
+        run: |
+          cd kernel_workspace/kernel_platform/common
+          if grep -rq 'ksu_handle_post_execveat_sucompat' fs/ 2>/dev/null; then
+            printf '\n/* build-compat stub: undefined KSU hook */\n__attribute__((weak)) int ksu_handle_post_execveat_sucompat(int *fd, struct filename **filename_ptr, void *argv, void *envp, int *flags, int *retval) { return 0; }\n' >> fs/exec.c
+            echo "=== stub appended ==="
+            tail -3 fs/exec.c
+          else
+            echo "=== symbol not referenced, skip ==="
+          fi
       - name: Build Kernel FAST
         if: ${{ github.event.inputs.FAST_BUILD == 'true' }}
         id: fast_build
