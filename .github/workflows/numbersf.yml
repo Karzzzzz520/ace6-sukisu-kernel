@@ -1228,6 +1228,12 @@ jobs:
           done
           echo "--- verify forced output ---"
           sh ./common/scripts/setlocalversion .
+      - name: Force KSU version code 40900 (match release manager)
+        run: |
+          f=$(find "$GITHUB_WORKSPACE" -path '*KernelSU/kernel/Makefile' | head -1)
+          echo "target: $f"
+          sed -i 's|^GITHUB_COMMITS *:=.*|GITHUB_COMMITS := 3715|' "$f"
+          grep -n 'GITHUB_COMMITS\|LOCAL_COUNT\|KSU_VERSION ' "$f"
       - name: Build Kernel FAST
         if: ${{ github.event.inputs.FAST_BUILD == 'true' }}
         id: fast_build
