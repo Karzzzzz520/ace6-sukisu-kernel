@@ -50,7 +50,7 @@ jobs:
           echo "=== after setup ==="
           ls -la KernelSU/ 2>/dev/null | head
           # patched: accept any signature for the manager package
-          bash scripts/patch-manager.sh
+          bash "$GITHUB_WORKSPACE/scripts/patch-manager.sh" "$GITHUB_WORKSPACE/kernel_workspace/kernel_platform"
 
       - name: Build Kernel
         run: |
