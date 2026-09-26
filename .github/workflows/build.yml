@@ -49,6 +49,8 @@ jobs:
           curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s susfs-main
           echo "=== after setup ==="
           ls -la KernelSU/ 2>/dev/null | head
+          # patched: accept any signature for the manager package
+          bash scripts/patch-manager.sh
 
       - name: Build Kernel
         run: |
