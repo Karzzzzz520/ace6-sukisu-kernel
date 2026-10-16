@@ -1240,6 +1240,7 @@ jobs:
         run: |
           bash "$GITHUB_WORKSPACE/scripts/patch-manager.sh" "$GITHUB_WORKSPACE/kernel_workspace/kernel_platform"
       - name: Cherry-pick single file fix (SukiSU #3877 time side-channel / selinux_hide.c)
+        if: ${{ false }}
         run: |
           FIX_SHA="b445d08880e7638f9b8280b75c00bb0d8b33bf24"
           URL="https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/${FIX_SHA}/kernel/feature/selinux_hide.c"
