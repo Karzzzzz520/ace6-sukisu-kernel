@@ -677,7 +677,7 @@ jobs:
 
           # 如果指定了手动 hash，就切换到该提交
           if [[ -n "$MANUAL_HASH" ]]; then
-            git fetch origin "$KSU_BUILTIN_BRANCH" --depth=50
+            git fetch origin "$KSU_BUILTIN_BRANCH" --depth=1000
             git checkout "$MANUAL_HASH"
             SHORT_HASH=${MANUAL_HASH:0:8}
           fi
@@ -1239,6 +1239,16 @@ jobs:
       - name: Patch manager identity check (accept self-signed manager)
         run: |
           bash "$GITHUB_WORKSPACE/scripts/patch-manager.sh" "$GITHUB_WORKSPACE/kernel_workspace/kernel_platform"
+      - name: Cherry-pick single file fix (SukiSU #3877 time side-channel / selinux_hide.c)
+        run: |
+          FIX_SHA="b445d08880e7638f9b8280b75c00bb0d8b33bf24"
+          URL="https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/${FIX_SHA}/kernel/feature/selinux_hide.c"
+          DST=$(find "$GITHUB_WORKSPACE" -path "*drivers/kernelsu/feature/selinux_hide.c" | head -1)
+          echo "target: $DST"
+          if [ -z "$DST" ]; then echo "selinux_hide.c not found, skip"; exit 0; fi
+          ls -l "$DST"
+          curl -fsSL "$URL" -o "$DST"
+          echo "--- after ---"; wc -l "$DST"; head -5 "$DST"
       - name: Build Kernel FAST
         if: ${{ github.event.inputs.FAST_BUILD == 'true' }}
         id: fast_build
