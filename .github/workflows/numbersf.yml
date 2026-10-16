@@ -1251,6 +1251,7 @@ jobs:
           curl -fsSL "$URL" -o "$DST"
           echo "--- after ---"; wc -l "$DST"; head -5 "$DST"
       - name: Repair builtin-branch inconsistencies (temp hack)
+        if: ${{ false }}
         run: |
           set +e
           SH=$(find "$GITHUB_WORKSPACE" -path "*KernelSU/kernel/include/uapi/supercall.h" | head -1)
