@@ -1228,12 +1228,14 @@ jobs:
           done
           echo "--- verify forced output ---"
           sh ./common/scripts/setlocalversion .
-      - name: Force KSU version code 40900 (match release manager)
+      - name: KSU version check (upstream 10-13 把公式搬到了 kernel/Kbuild)
         run: |
-          f=$(find "$GITHUB_WORKSPACE" -path '*KernelSU/kernel/Makefile' | head -1)
+          set +e
+          f=$(find "$GITHUB_WORKSPACE" -path '*KernelSU/kernel/Kbuild' | head -1)
+          [ -z "$f" ] && f=$(find "$GITHUB_WORKSPACE" -path '*KernelSU/kernel/Makefile' | head -1)
           echo "target: $f"
-          sed -i 's|^GITHUB_COMMITS *:=.*|GITHUB_COMMITS := 3715|' "$f"
-          grep -n 'GITHUB_COMMITS\|LOCAL_COUNT\|KSU_VERSION ' "$f"
+          grep -n "GITHUB_COMMITS\|LOCAL_COUNT\|KSU_VERSION\|VERSION_TAG" "$f" || echo "(未找到版本字段)"
+          echo "不再手动钉版本：内核与管理器同公式 (40000 + 提交数 - 2815)，取同一次 CI 构建即天然对齐。"
       - name: Patch manager identity check (accept self-signed manager)
         run: |
           bash "$GITHUB_WORKSPACE/scripts/patch-manager.sh" "$GITHUB_WORKSPACE/kernel_workspace/kernel_platform"
