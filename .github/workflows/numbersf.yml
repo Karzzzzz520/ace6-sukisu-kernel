@@ -1250,47 +1250,46 @@ jobs:
           ls -l "$DST"
           curl -fsSL "$URL" -o "$DST"
           echo "--- after ---"; wc -l "$DST"; head -5 "$DST"
-      - name: Repair builtin dynamic-manager merge (3 spots)
+      - name: Repair builtin merge leftovers (4 spots)
         run: |
           set +e
           python3 - "$GITHUB_WORKSPACE" "false" <<'PY'
           import glob, os, sys
           root, arg = sys.argv[1], sys.argv[2]
           ks = glob.glob(root + "/**/KernelSU/kernel", recursive=True)
-          print("KernelSU kernel dirs:", ks)
+          print("dirs:", ks)
           if not ks:
-              print("not found, skip"); raise SystemExit(0)
+              print("not found"); raise SystemExit(0)
           K = ks[0]
-          # (1) supercall.h: 补 KSU_IOCTL_MANAGER
           p = os.path.join(K, "include/uapi/supercall.h")
           s = open(p).read()
           if "KSU_IOCTL_MANAGER" not in s:
               i = s.rstrip().rfind("#endif")
               s = s[:i] + "static const __u32 KSU_IOCTL_MANAGER = _IOWR('K', 106, struct ksu_manager_cmd);\n" + s[i:]
-              open(p, "w").write(s)
-              print("(1) added KSU_IOCTL_MANAGER to supercall.h")
-          else:
-              print("(1) already present")
-          # (2) throne_tracker.c: 把 pkg 提到函数作用域
+              open(p, "w").write(s); print("(1) added KSU_IOCTL_MANAGER")
+          else: print("(1) ok")
           p2 = os.path.join(K, "manager/throne_tracker.c")
           t = open(p2).read()
           if "char pkg[KSU_MAX_PACKAGE_NAME];" in t:
               t = t.replace("        char pkg[KSU_MAX_PACKAGE_NAME];\n", "", 1)
               t = t.replace("bool builtin_crowned_this_call = false;", "bool builtin_crowned_this_call = false;\n    char pkg[KSU_MAX_PACKAGE_NAME] = {0};", 1)
-              open(p2, "w").write(t)
-              print("(2) hoisted pkg declaration")
-          # (3) pkg_observer.c: 把未定义的常量换成实际实参
+              open(p2, "w").write(t); print("(2) hoisted pkg")
+          else: print("(2) ok")
           p3 = os.path.join(K, "manager/pkg_observer.c")
           u = open(p3).read()
           if "TRACK_THRONE_FORCE_SYNCHRONOUS" in u:
               u = u.replace("TRACK_THRONE_FORCE_SYNCHRONOUS", arg)
-              open(p3, "w").write(u)
-              print("(3) replaced TRACK_THRONE_FORCE_SYNCHRONOUS with", arg)
+              open(p3, "w").write(u); print("(3) replaced const with", arg)
+          else: print("(3) ok")
+          p4 = os.path.join(K, "feature/selinux_hide.c")
+          v = open(p4).read()
+          if "__attribute__((weak)) context_struct_compute_av_fn" not in v:
+              v = v.replace("extern void context_struct_compute_av_fn(", "extern void __attribute__((weak)) context_struct_compute_av_fn(", 1)
+              open(p4, "w").write(v); print("(4) weak context_struct_compute_av_fn")
+          else: print("(4) ok")
           PY
           echo "=== verify ==="
-          grep -n "KSU_IOCTL_MANAGER" $(find "$GITHUB_WORKSPACE" -path "*KernelSU/kernel/include/uapi/supercall.h" | head -1) || true
-          grep -n "char pkg\[KSU_MAX_PACKAGE_NAME\]" $(find "$GITHUB_WORKSPACE" -path "*KernelSU/kernel/manager/throne_tracker.c" | head -1) || true
-          grep -n "track_throne(" $(find "$GITHUB_WORKSPACE" -path "*KernelSU/kernel/manager/pkg_observer.c" | head -1) || true
+          grep -rn "__attribute__((weak)) context_struct_compute_av_fn" $(find "$GITHUB_WORKSPACE" -path "*KernelSU/kernel/feature/selinux_hide.c" | head -1) || true
       - name: Build Kernel FAST
         if: ${{ github.event.inputs.FAST_BUILD == 'true' }}
         id: fast_build
