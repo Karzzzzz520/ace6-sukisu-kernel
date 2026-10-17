@@ -1250,17 +1250,16 @@ jobs:
           ls -l "$DST"
           curl -fsSL "$URL" -o "$DST"
           echo "--- after ---"; wc -l "$DST"; head -5 "$DST"
-      - name: Repair builtin merge leftovers (4 spots)
+      - name: Repair builtin merge leftovers (5 spots)
         run: |
           set +e
           python3 - "$GITHUB_WORKSPACE" "false" <<'PY'
-          import glob, os, sys
+          import glob, os, re, sys
           root, arg = sys.argv[1], sys.argv[2]
           ks = glob.glob(root + "/**/KernelSU/kernel", recursive=True)
-          print("dirs:", ks)
           if not ks:
-              print("not found"); raise SystemExit(0)
-          K = ks[0]
+              print("KernelSU not found"); raise SystemExit(0)
+          K = ks[0]; print("dir:", K)
           p = os.path.join(K, "include/uapi/supercall.h")
           s = open(p).read()
           if "KSU_IOCTL_MANAGER" not in s:
@@ -1278,18 +1277,23 @@ jobs:
           p3 = os.path.join(K, "manager/pkg_observer.c")
           u = open(p3).read()
           if "TRACK_THRONE_FORCE_SYNCHRONOUS" in u:
-              u = u.replace("TRACK_THRONE_FORCE_SYNCHRONOUS", arg)
-              open(p3, "w").write(u); print("(3) replaced const with", arg)
+              open(p3, "w").write(u.replace("TRACK_THRONE_FORCE_SYNCHRONOUS", arg)); print("(3) const ->", arg)
           else: print("(3) ok")
           p4 = os.path.join(K, "feature/selinux_hide.c")
           v = open(p4).read()
-          if "__attribute__((weak)) context_struct_compute_av_fn" not in v:
-              v = v.replace("extern void context_struct_compute_av_fn(", "extern void __attribute__((weak)) context_struct_compute_av_fn(", 1)
-              open(p4, "w").write(v); print("(4) weak context_struct_compute_av_fn")
-          else: print("(4) ok")
+          v2 = re.sub(r"if \(\(void \*\)security_dump_masked_av_fn != NULL\)\s*\n\s*security_dump_masked_av_fn\([^;]*\);", "/* optional hook removed */", v, count=1)
+          if v2 == v: print("(4) no dump hook pattern")
+          else: print("(4a) removed security_dump_masked_av_fn call site"); v = v2
+          m = re.search(r"if \(\(void \*\)context_struct_compute_av_fn != NULL\) \{.*?\} else \{\s*(context_struct_compute_av\([^;]*;)\s*\}", v, re.S)
+          if m:
+              v = v[:m.start()] + m.group(1) + v[m.end():]
+              print("(4b) inlined context_struct_compute_av fallback")
+          else: print("(4b) no context pattern")
+          open(p4, "w").write(v)
           PY
-          echo "=== verify ==="
-          grep -rn "__attribute__((weak)) context_struct_compute_av_fn" $(find "$GITHUB_WORKSPACE" -path "*KernelSU/kernel/feature/selinux_hide.c" | head -1) || true
+          echo "=== grep remain ==="
+          F=$(find "$GITHUB_WORKSPACE" -path "*KernelSU/kernel/feature/selinux_hide.c" | head -1)
+          grep -n "_fn != NULL\|_fn(" "$F" | head -5 || true
       - name: Build Kernel FAST
         if: ${{ github.event.inputs.FAST_BUILD == 'true' }}
         id: fast_build
