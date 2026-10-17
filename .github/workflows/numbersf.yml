@@ -1294,6 +1294,20 @@ jobs:
           echo "=== grep remain ==="
           F=$(find "$GITHUB_WORKSPACE" -path "*KernelSU/kernel/feature/selinux_hide.c" | head -1)
           grep -n "_fn != NULL\|_fn(" "$F" | head -5 || true
+      - name: Bump KSU UAPI version (builtin headers are stale at 2)
+        run: |
+          set -e
+          ROOT="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform"
+          n=0
+          for f in $(find "$ROOT" -name supercall.h -path '*uapi*' 2>/dev/null); do
+            sed -i -E 's/KERNEL_SU_UAPI_VERSION[[:space:]]*=[[:space:]]*2/KERNEL_SU_UAPI_VERSION = 5/' "$f"
+            sed -i -E 's/KERNEL_SU_UAPI_VERSION,[[:space:]]*2\)/KERNEL_SU_UAPI_VERSION, 5)/' "$f"
+            echo "--- $f"
+            grep -n 'KERNEL_SU_UAPI_VERSION' "$f" || true
+            n=$((n+1))
+          done
+          echo "patched headers: $n"
+          grep -rn 'KERNEL_SU_UAPI_VERSION' "$ROOT" | head -10 || true
       - name: Build Kernel FAST
         if: ${{ github.event.inputs.FAST_BUILD == 'true' }}
         id: fast_build
